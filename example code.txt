@@ -1,0 +1,173 @@
+Option Explicit
+
+Const API_KEY As String = "autholas_f3e17c2885f8eee2a09432eb616925d16b628782e30e32f5136ca1279aab00f4"
+Const API_URL As String = "https://autholas.nicholasdevs.my.id/api/auth"
+
+Private Sub HandleAuthError(errorCode As String, Optional errorMessage As String = "")
+    Dim title As String
+    Dim message As String
+    
+    Select Case errorCode
+        Case "INVALID_CREDENTIALS"
+            title = "Login Failed"
+            message = "Username or password is incorrect." & vbCrLf & "Please double-check your credentials and try again."
+        Case "USER_BANNED"
+            title = "Account Banned"
+            message = "Your account has been suspended." & vbCrLf & "Please contact support for assistance."
+        Case "SUBSCRIPTION_EXPIRED"
+            title = "Subscription Expired"
+            message = "Your subscription has ended." & vbCrLf & "Please renew your subscription to continue."
+        Case "MAX_DEVICES_REACHED"
+            title = "Device Limit Reached"
+            message = "Maximum number of devices exceeded." & vbCrLf & "Please contact support to reset your devices."
+        Case "HWID_BANNED"
+            title = "Device Banned"
+            message = "This device has been banned." & vbCrLf & "Please contact support for assistance."
+        Case "INVALID_API_KEY"
+            title = "Service Error"
+            message = "Authentication service unavailable." & vbCrLf & "Please try again later or contact support."
+        Case "RATE_LIMIT_EXCEEDED"
+            title = "Too Many Attempts"
+            message = "Please wait before trying again."
+        Case "DEVELOPER_SUSPENDED"
+            title = "Service Unavailable"
+            message = "Authentication service is temporarily unavailable." & vbCrLf & "Please contact support."
+        Case "MISSING_PARAMETERS"
+            title = "Invalid Request"
+            message = "Missing required parameters." & vbCrLf & "Please try again."
+        Case "SERVICE_ERROR"
+            title = "Service Error"
+            message = "Authentication service is temporarily unavailable." & vbCrLf & "Please try again later."
+        Case Else
+            title = "Authentication Error"
+            If errorMessage <> "" Then
+                message = errorMessage
+            Else
+                message = "Unknown error occurred."
+            End If
+    End Select
+    
+    MsgBox message, vbCritical, title
+End Sub
+
+
+Public Function AuthenticateUser(username As String, password As String) As Boolean
+    Dim http As Object
+    Dim payload As Object
+    Dim jsonRequest As String
+    Dim responseText As String
+    Dim jsonResponse As Object
+    Dim hwid As String
+    Dim deviceName As String
+    
+    On Error GoTo ErrHandler
+    
+    hwid = Environ("COMPUTERNAME")
+    If hwid = "" Then hwid = "vba_client"
+    deviceName = "User PC"
+    
+    Set http = CreateObject("MSXML2.XMLHTTP")
+    Set payload = CreateObject("Scripting.Dictionary")
+    
+    payload.Add "api_key", API_KEY
+    payload.Add "username", username
+    payload.Add "password", password
+    payload.Add "hwid", hwid
+    payload.Add "device_name", deviceName
+    
+    jsonRequest = JsonConverter.ConvertToJson(payload)
+    Debug.Print "Request JSON: " & jsonRequest
+    
+    http.Open "POST", API_URL, False
+    http.setRequestHeader "Content-Type", "application/json"
+    http.Send jsonRequest
+    
+    responseText = http.responseText
+    Debug.Print "Response: " & responseText
+    
+    Select Case http.Status
+        Case 200
+            Set jsonResponse = JsonConverter.ParseJson(responseText)
+            If jsonResponse.Exists("success") And jsonResponse("success") = True Then
+                MsgBox "Login berhasil! Selamat datang, " & username, vbInformation
+                AuthenticateUser = True
+            Else
+                If jsonResponse.Exists("error_code") Then
+                    HandleAuthError jsonResponse("error_code"), jsonResponse("error")
+                ElseIf jsonResponse.Exists("error") Then
+                    MsgBox "Login gagal: " & jsonResponse("error"), vbCritical
+                Else
+                    MsgBox "Login gagal: Unknown error", vbCritical
+                End If
+                AuthenticateUser = False
+            End If
+            
+        Case 401
+            On Error Resume Next
+            Set jsonResponse = JsonConverter.ParseJson(responseText)
+            If Not jsonResponse Is Nothing Then
+                If jsonResponse.Exists("error_code") Then
+                    HandleAuthError jsonResponse("error_code"), jsonResponse("error")
+                ElseIf jsonResponse.Exists("error") Then
+                    MsgBox "Login gagal: " & jsonResponse("error"), vbCritical
+                Else
+                    MsgBox "Login gagal: Unauthorized (401)", vbCritical
+                End If
+            Else
+                MsgBox "Login gagal: Unauthorized (401)", vbCritical
+            End If
+            AuthenticateUser = False
+            
+        Case 403
+            On Error Resume Next
+            Set jsonResponse = JsonConverter.ParseJson(responseText)
+            If Not jsonResponse Is Nothing Then
+                If jsonResponse.Exists("error_code") Then
+                    HandleAuthError jsonResponse("error_code"), jsonResponse("error")
+                ElseIf jsonResponse.Exists("error") Then
+                    MsgBox "Access forbidden: " & jsonResponse("error"), vbCritical
+                Else
+                    MsgBox "Access forbidden: Device might be banned.", vbCritical
+                End If
+            Else
+                MsgBox "Access forbidden: Device might be banned.", vbCritical
+            End If
+            AuthenticateUser = False
+    
+        Case Else
+            MsgBox "Server error " & http.Status & ": " & http.statusText, vbCritical
+            AuthenticateUser = False
+    End Select
+    
+    Exit Function
+
+ErrHandler:
+    MsgBox "Error saat request: " & Err.Description, vbCritical
+    AuthenticateUser = False
+End Function
+
+
+Private Sub CommandButton1_Click()
+    Dim user As String
+    Dim pass As String
+    Dim success As Boolean
+    
+    user = Trim(Me.TextBox1.text)
+    pass = Trim(Me.TextBox2.text)
+    
+    If user = "" Or pass = "" Then
+        MsgBox "User dan password tidak boleh kosong!", vbExclamation
+        Exit Sub
+    End If
+    
+    success = AuthenticateUser(user, pass)
+    
+    If success Then
+        Unload Me
+    Else
+        Me.TextBox1.text = ""
+        Me.TextBox2.text = ""
+        Me.TextBox1.SetFocus
+    End If
+End Sub
+
