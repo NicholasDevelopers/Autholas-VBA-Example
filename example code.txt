@@ -1,6 +1,6 @@
 Option Explicit
 
-Const API_KEY As String = "autholas_f3e17c2885f8eee2a09432eb616925d16b628782e30e32f5136ca1279aab00f4"
+Const API_KEY As String = "YOUR_API_KEY"
 Const API_URL As String = "https://autholas.web.id/api/auth"
 
 Private Sub HandleAuthError(errorCode As String, Optional errorMessage As String = "")
